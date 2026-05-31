@@ -823,7 +823,16 @@ function startARGame() {
   document.getElementById('ar-setup-panel').style.display = 'none';
   document.getElementById('ar-scene').style.display = 'block';
   document.getElementById('game-ui').style.display = 'block';
-  document.getElementById('gps-status').style.display = 'block';
+
+  const gpsEl = document.getElementById('gps-status');
+  gpsEl.style.display = 'block';
+  // If GPS is already locked from calibration, show current accuracy immediately
+  if (currentPos) {
+    gpsEl.textContent = `📡 GPS: ±${currentPos.acc.toFixed(1)}m`;
+  } else {
+    gpsEl.textContent = '📡 GPS: buscando sinal...';
+  }
+
   document.getElementById('mode-badge').className = 'mode-badge ar';
 
   // Build lane lines in A-Frame
@@ -832,7 +841,7 @@ function startARGame() {
   STATE.mode = 'ar';
   resetGame();
   runARGame();
-  startARGPSTracking();
+  // GPS already running via initGPS() — onGPSUpdate handles gameplay tracking
 }
 
 function buildARLanes() {
@@ -1068,6 +1077,37 @@ function updateHUD() {
 let watchId = null;
 let currentPos = null;
 
+function onGPSUpdate(pos) {
+  currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+
+  // Always update the in-game GPS status label if visible
+  const gpsEl = document.getElementById('gps-status');
+  if (gpsEl && gpsEl.style.display !== 'none') {
+    gpsEl.textContent = `📡 GPS: ±${pos.coords.accuracy.toFixed(1)}m`;
+  }
+
+  // Update setup panel displays if still calibrating
+  updateGPSDisplays();
+
+  // Update lane during gameplay
+  if (STATE.running && STATE.mode === 'ar') {
+    updateARLaneFromGPS();
+  }
+}
+
+function onGPSError(err) {
+  console.warn('GPS error:', err.code, err.message);
+  const gpsEl = document.getElementById('gps-status');
+  if (gpsEl && gpsEl.style.display !== 'none') {
+    const msgs = {
+      1: '❌ GPS: permissão negada',
+      2: '❌ GPS: posição indisponível',
+      3: '⚠️ GPS: timeout — tentando...',
+    };
+    gpsEl.textContent = msgs[err.code] || '❌ GPS: erro desconhecido';
+  }
+}
+
 function initGPS() {
   if (!navigator.geolocation) {
     alert('Geolocalização não suportada neste dispositivo.');
@@ -1075,15 +1115,16 @@ function initGPS() {
     return;
   }
 
+  // Single persistent watch used for both calibration and gameplay
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+
   watchId = navigator.geolocation.watchPosition(
-    pos => {
-      currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
-      updateGPSDisplays();
-    },
-    err => {
-      console.warn('GPS error:', err);
-    },
-    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+    onGPSUpdate,
+    onGPSError,
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
   );
 }
 
@@ -1163,24 +1204,7 @@ function setLeft() {
     `Centro → Dir: ${(STATE.laneWidth * 100).toFixed(1)} cm`;
 }
 
-// ═══════════════════════════════════════════
-//  AR GPS TRACKING during gameplay
-// ═══════════════════════════════════════════
-function startARGPSTracking() {
-  if (watchId !== null) return; // already watching
-  watchId = navigator.geolocation.watchPosition(
-    pos => {
-      currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
-      if (STATE.running && STATE.mode === 'ar') {
-        updateARLaneFromGPS();
-      }
-      const gpsEl = document.getElementById('gps-status');
-      if (gpsEl) gpsEl.textContent = `📡 GPS: ±${pos.coords.accuracy.toFixed(1)}m`;
-    },
-    err => console.warn('GPS:', err),
-    { enableHighAccuracy: true, maximumAge: 0 }
-  );
-}
+// GPS tracking unified — handled by onGPSUpdate via initGPS()
 
 function updateARLaneFromGPS() {
   if (!currentPos || !STATE.gpsCenter || !STATE.gpsLeft) return;
