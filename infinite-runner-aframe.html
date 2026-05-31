@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>GeoRunner — Infinite Runner</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/aframe/1.5.0/aframe.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@300;500;700&display=swap');
+
+    :root {
+      --neon-cyan: #00f5ff;
+      --neon-pink: #ff006e;
+      --neon-yellow: #ffd60a;
+      --dark-bg: #030812;
+      --panel-bg: rgba(3, 8, 18, 0.92);
+      --glow-cyan: 0 0 20px #00f5ff88, 0 0 40px #00f5ff44;
+      --glow-pink: 0 0 20px #ff006e88, 0 0 40px #ff006e44;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--dark-bg);
+      font-family: 'Rajdhani', sans-serif;
+      overflow: hidden;
+      color: white;
+    }
+
+    /* ─── MENU SCREEN ─── */
+    #menu-screen {
+      position: fixed; inset: 0; z-index: 100;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: var(--dark-bg);
+      overflow: hidden;
+    }
+
+    .grid-bg {
+      position: absolute; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,245,255,0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,245,255,0.07) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridMove 8s linear infinite;
+    }
+    @keyframes gridMove {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(40px); }
+    }
+
+    .scanline {
+      position: absolute; inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.15) 2px,
+        rgba(0,0,0,0.15) 4px
+      );
+      pointer-events: none;
+    }
+
+    .menu-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(2.5rem, 8vw, 5rem);
+      font-weight: 900;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--neon-cyan);
+      text-shadow: var(--glow-cyan);
+      z-index: 1;
+      animation: titlePulse 3s ease-in-out infinite;
+    }
+    @keyframes titlePulse {
+      0%, 100% { text-shadow: 0 0 20px #00f5ff88, 0 0 40px #00f5ff44; }
+      50% { text-shadow: 0 0 40px #00f5ffcc, 0 0 80px #00f5ff66, 0 0 120px #00f5ff22; }
+    }
+
+    .menu-sub {
+      font-family: 'Rajdhani', sans-serif;
+      font-size: 1.1rem;
+      letter-spacing: 0.3em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      margin-top: 0.5rem;
+      z-index: 1;
+    }
+
+    .menu-buttons {
+      display: flex; flex-direction: column;
+      gap: 1rem; margin-top: 3rem; z-index: 1;
+      width: min(380px, 90vw);
+    }
+
+    .btn-mode {
+      padding: 1.1rem 2rem;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      border: 2px solid;
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s;
+      background: transparent;
+    }
+
+    .btn-mode::before {
+      content: '';
+      position: absolute; inset: 0;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .btn-site {
+      color: var(--neon-cyan);
+      border-color: var(--neon-cyan);
+    }
+    .btn-site::before { background: var(--neon-cyan); }
+    .btn-site:hover { color: var(--dark-bg); text-shadow: none; box-shadow: var(--glow-cyan); }
+    .btn-site:hover::before { opacity: 1; }
+
+    .btn-ar {
+      color: var(--neon-pink);
+      border-color: var(--neon-pink);
+    }
+    .btn-ar::before { background: var(--neon-pink); }
+    .btn-ar:hover { color: white; text-shadow: none; box-shadow: var(--glow-pink); }
+    .btn-ar:hover::before { opacity: 1; }
+
+    .btn-mode span { position: relative; z-index: 1; }
+
+    .mode-icon {
+      font-size: 1.4rem;
+      margin-right: 0.5rem;
+    }
+
+    /* ─── GAME UI OVERLAY ─── */
+    #game-ui {
+      position: fixed; inset: 0; z-index: 50;
+      pointer-events: none;
+      display: none;
+    }
+
+    /* HUD top bar */
+    #hud {
+      position: absolute; top: 0; left: 0; right: 0;
+      padding: 1rem 1.5rem;
+      display: flex; justify-content: space-between; align-items: center;
+      background: linear-gradient(to bottom, rgba(3,8,18,0.8), transparent);
+    }
+
+    .hud-score {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--neon-yellow);
+      text-shadow: 0 0 15px #ffd60a88;
+    }
+
+    .hud-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.2em;
+      opacity: 0.6;
+      display: block;
+      text-transform: uppercase;
+    }
+
+    .hud-lives {
+      font-size: 1.4rem;
+      display: flex; gap: 0.4rem;
+    }
+
+    .heart {
+      transition: opacity 0.3s;
+      filter: drop-shadow(0 0 6px #ff006e);
+    }
+    .heart.lost { opacity: 0.2; filter: none; }
+
+    /* Mode badge */
+    .mode-badge {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.65rem;
+      letter-spacing: 0.15em;
+      padding: 0.3rem 0.8rem;
+      border: 1px solid;
+      text-transform: uppercase;
+      pointer-events: all;
+      cursor: pointer;
+    }
+    .mode-badge.site { color: var(--neon-cyan); border-color: var(--neon-cyan); }
+    .mode-badge.ar   { color: var(--neon-pink); border-color: var(--neon-pink); }
+
+    /* Arrow buttons (site mode) */
+    #arrow-buttons {
+      position: absolute; bottom: 3rem; left: 0; right: 0;
+      display: flex; justify-content: space-between;
+      padding: 0 2rem;
+      pointer-events: all;
+    }
+
+    .arrow-btn {
+      width: 80px; height: 80px;
+      border-radius: 50%;
+      border: 3px solid var(--neon-cyan);
+      background: rgba(0,245,255,0.1);
+      color: var(--neon-cyan);
+      font-size: 2rem;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: var(--glow-cyan);
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .arrow-btn:active {
+      transform: scale(0.9);
+      background: rgba(0,245,255,0.3);
+    }
+
+    .arrow-btn.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    /* Lane indicators */
+    #lane-indicator {
+      position: absolute;
+      bottom: 1rem; left: 0; right: 0;
+      display: flex; justify-content: center; gap: 0.6rem;
+      pointer-events: none;
+    }
+
+    .lane-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.3);
+      transition: all 0.3s;
+    }
+    .lane-dot.active {
+      background: var(--neon-cyan);
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 10px var(--neon-cyan);
+    }
+
+    /* ─── AR SETUP PANEL ─── */
+    #ar-setup-panel {
+      position: fixed; inset: 0; z-index: 80;
+      background: var(--panel-bg);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      gap: 1.5rem;
+    }
+
+    .setup-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--neon-pink);
+      text-shadow: var(--glow-pink);
+      letter-spacing: 0.1em;
+      text-align: center;
+    }
+
+    .setup-step {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 4px;
+      padding: 1.5rem;
+      width: min(420px, 95vw);
+      text-align: center;
+    }
+
+    .step-num {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.7rem;
+      letter-spacing: 0.2em;
+      color: var(--neon-pink);
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+    }
+
+    .step-desc {
+      font-size: 1rem;
+      line-height: 1.6;
+      color: rgba(255,255,255,0.8);
+    }
+
+    .coord-display {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.8rem;
+      color: var(--neon-yellow);
+      margin-top: 0.8rem;
+      min-height: 1.5em;
+    }
+
+    .btn-set {
+      padding: 0.9rem 2.5rem;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      background: transparent;
+      color: var(--neon-cyan);
+      border: 2px solid var(--neon-cyan);
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .btn-set:hover {
+      background: var(--neon-cyan);
+      color: var(--dark-bg);
+      box-shadow: var(--glow-cyan);
+    }
+    .btn-set:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
+    .progress-steps {
+      display: flex; gap: 0.5rem; align-items: center;
+    }
+
+    .prog-dot {
+      width: 12px; height: 12px; border-radius: 50%;
+      border: 2px solid rgba(255,255,255,0.2);
+      transition: all 0.4s;
+    }
+    .prog-dot.done {
+      background: var(--neon-cyan);
+      border-color: var(--neon-cyan);
+      box-shadow: 0 0 8px var(--neon-cyan);
+    }
+    .prog-dot.current {
+      border-color: var(--neon-pink);
+      animation: progPulse 1s ease-in-out infinite;
+    }
+    @keyframes progPulse {
+      0%, 100% { box-shadow: 0 0 4px var(--neon-pink); }
+      50% { box-shadow: 0 0 14px var(--neon-pink); }
+    }
+
+    /* ─── GAME OVER SCREEN ─── */
+    #gameover-screen {
+      position: fixed; inset: 0; z-index: 90;
+      background: rgba(3,8,18,0.95);
+      display: none;
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 1.2rem;
+    }
+
+    .go-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(2rem, 7vw, 4rem);
+      font-weight: 900;
+      color: var(--neon-pink);
+      text-shadow: var(--glow-pink);
+      letter-spacing: 0.1em;
+    }
+
+    .go-score {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1rem;
+      color: rgba(255,255,255,0.6);
+      letter-spacing: 0.2em;
+    }
+
+    .go-final {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--neon-yellow);
+      text-shadow: 0 0 20px #ffd60a88;
+    }
+
+    .go-buttons {
+      display: flex; flex-direction: column;
+      gap: 0.8rem; margin-top: 1rem;
+      width: min(300px, 85vw);
+    }
+
+    /* ─── CANVAS (site mode) ─── */
+    #game-canvas {
+      display: none;
+      position: fixed; inset: 0;
+    }
+
+    /* AR GPS indicator */
+    #gps-status {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Orbitron', sans-serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+      color: var(--neon-pink);
+      background: rgba(3,8,18,0.7);
+      padding: 0.4rem 1rem;
+      border: 1px solid var(--neon-pink);
+      pointer-events: none;
+      text-align: center;
+    }
+
+    /* A-Frame scene */
+    #ar-scene { display: none; position: fixed; inset: 0; }
+
+    /* Collision flash */
+    #collision-flash {
+      position: fixed; inset: 0; z-index: 999;
+      background: rgba(255,0,110,0.4);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.1s;
+    }
+
+    /* Responsive tweaks */
+    @media (max-width: 480px) {
+      .arrow-btn { width: 68px; height: 68px; font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ════════════════════════════ MENU ════════════════════════════ -->
+<div id="menu-screen">
+  <div class="grid-bg"></div>
+  <div class="scanline"></div>
+  <div class="menu-title">GeoRunner</div>
+  <div class="menu-sub">Infinite Runner Experience</div>
+  <div class="menu-buttons">
+    <button class="btn-mode btn-site" onclick="startSiteMode()">
+      <span><span class="mode-icon">🖥️</span>Modo Site</span>
+    </button>
+    <button class="btn-mode btn-ar" onclick="startARMode()">
+      <span><span class="mode-icon">📡</span>Modo AR + GPS</span>
+    </button>
+  </div>
+</div>
+
+<!-- ════════════════════════════ CANVAS (site mode) ════════════════════════════ -->
+<canvas id="game-canvas"></canvas>
+
+<!-- ════════════════════════════ A-FRAME (AR mode) ════════════════════════════ -->
+<div id="ar-scene">
+  <a-scene
+    id="aframe-scene"
+    embedded
+    style="width:100%;height:100vh;"
+    vr-mode-ui="enabled: false"
+    background="color: #030812"
+  >
+    <a-assets>
+      <!-- Player body -->
+      <a-mixin id="player-look" geometry="primitive: capsule; radius: 0.18; height: 0.8"
+               material="color: #00f5ff; emissive: #00f5ff; emissiveIntensity: 0.5"></a-mixin>
+      <!-- Obstacle -->
+      <a-mixin id="obstacle-look" geometry="primitive: box; width: 0.6; height: 1; depth: 0.5"
+               material="color: #ff006e; emissive: #ff006e; emissiveIntensity: 0.6"></a-mixin>
+    </a-assets>
+
+    <!-- Camera rig -->
+    <a-entity id="camera-rig" position="0 1.6 0">
+      <a-camera id="main-camera" look-controls="enabled: false" wasd-controls="enabled: false"></a-camera>
+    </a-entity>
+
+    <!-- Ground (extends far) -->
+    <a-plane id="ar-ground"
+             position="0 0 -15"
+             rotation="-90 0 0"
+             width="8" height="60"
+             material="color: #0a0e1a; opacity: 0.9"
+             shadow></a-plane>
+
+    <!-- Lane lines -->
+    <a-entity id="lane-lines"></a-entity>
+
+    <!-- Player entity -->
+    <a-entity id="ar-player"
+              mixin="player-look"
+              position="0 0.5 -2"
+              shadow></a-entity>
+
+    <!-- Obstacle container -->
+    <a-entity id="ar-obstacles"></a-entity>
+
+    <!-- Ambient + directional light -->
+    <a-light type="ambient" color="#112244" intensity="1.5"></a-light>
+    <a-light type="directional" position="0 5 -3" color="#00f5ff" intensity="1"></a-light>
+    <a-light type="point" id="player-light" position="0 1 -2" color="#00f5ff" intensity="2" distance="4"></a-light>
+
+    <!-- Fog for depth -->
+    <a-fog type="exponential" color="#030812" density="0.04"></a-fog>
+  </a-scene>
+</div>
+
+<!-- ════════════════════════════ GAME UI OVERLAY ════════════════════════════ -->
+<div id="game-ui">
+  <div id="hud">
+    <div>
+      <span class="hud-label">Score</span>
+      <span class="hud-score" id="score-display">0</span>
+    </div>
+    <button class="mode-badge" id="mode-badge" onclick="goToMenu()">MENU</button>
+    <div style="text-align:right">
+      <span class="hud-label">Vidas</span>
+      <div class="hud-lives">
+        <span class="heart" id="h1">❤️</span>
+        <span class="heart" id="h2">❤️</span>
+        <span class="heart" id="h3">❤️</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- GPS status (AR only) -->
+  <div id="gps-status" style="display:none;">📡 GPS: buscando sinal...</div>
+
+  <!-- Arrow buttons (site mode) -->
+  <div id="arrow-buttons" style="display:none;">
+    <button class="arrow-btn" id="btn-left"  onclick="movePlayer(-1)">◀</button>
+    <button class="arrow-btn" id="btn-right" onclick="movePlayer(1)">▶</button>
+  </div>
+
+  <!-- Lane dots -->
+  <div id="lane-indicator">
+    <div class="lane-dot" id="dot-0"></div>
+    <div class="lane-dot active" id="dot-1"></div>
+    <div class="lane-dot" id="dot-2"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════ AR SETUP PANEL ════════════════════════════ -->
+<div id="ar-setup-panel">
+  <div class="setup-title">⚙️ Configurar Faixas GPS</div>
+
+  <div class="progress-steps">
+    <div class="prog-dot current" id="prog-0"></div>
+    <div class="prog-dot" id="prog-1"></div>
+    <div class="prog-dot" id="prog-2"></div>
+  </div>
+
+  <div class="setup-step" id="step-center-box">
+    <div class="step-num">Passo 1 de 3</div>
+    <p class="step-desc">Fique na <strong>faixa CENTRAL</strong> onde deseja jogar e pressione o botão abaixo.</p>
+    <div class="coord-display" id="coord-center">Aguardando GPS...</div>
+    <br>
+    <button class="btn-set" id="btn-set-center" onclick="setCenter()" disabled>
+      📍 Setar Faixa Central
+    </button>
+  </div>
+
+  <div class="setup-step" id="step-left-box" style="display:none;">
+    <div class="step-num">Passo 2 de 3</div>
+    <p class="step-desc">Agora ande para a <strong>esquerda</strong> (≥ 50 cm detectáveis pelo GPS) e pressione o botão.<br><small style="opacity:0.5">A faixa da direita será calculada automaticamente.</small></p>
+    <div class="coord-display" id="coord-left">Aguardando movimento...</div>
+    <div class="coord-display" id="dist-left" style="color: rgba(255,255,255,0.4)"></div>
+    <br>
+    <button class="btn-set" id="btn-set-left" onclick="setLeft()" disabled>
+      ◀ Setar Faixa Esquerda
+    </button>
+  </div>
+
+  <div class="setup-step" id="step-done-box" style="display:none;">
+    <div class="step-num">Passo 3 de 3 — Pronto!</div>
+    <p class="step-desc">Faixas configuradas com sucesso! 🎉<br>A faixa da direita foi calculada automaticamente.</p>
+    <div class="coord-display" id="setup-summary"></div>
+    <br>
+    <button class="btn-set" onclick="startARGame()">▶ Iniciar Jogo</button>
+  </div>
+
+  <button class="btn-mode btn-site" style="font-size:0.75rem; padding:0.6rem 1.5rem; margin-top:1rem;" onclick="goToMenu()">
+    <span>← Voltar ao Menu</span>
+  </button>
+</div>
+
+<!-- ════════════════════════════ GAME OVER ════════════════════════════ -->
+<div id="gameover-screen">
+  <div class="go-title">GAME OVER</div>
+  <div class="go-score">PONTUAÇÃO FINAL</div>
+  <div class="go-final" id="final-score">0</div>
+  <div class="go-buttons">
+    <button class="btn-mode btn-site" onclick="restartGame()"><span>🔄 Jogar Novamente</span></button>
+    <button class="btn-mode btn-ar" style="color:var(--neon-yellow);border-color:var(--neon-yellow);" onclick="goToMenu()"><span>🏠 Menu Principal</span></button>
+  </div>
+</div>
+
+<!-- Collision flash -->
+<div id="collision-flash"></div>
+
+<script>
+// ═══════════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════════
+const STATE = {
+  mode: null,           // 'site' | 'ar'
+  running: false,
+  lane: 1,              // 0=left, 1=center, 2=right
+  score: 0,
+  lives: 3,
+  speed: 4,             // units/s
+  spawnInterval: 2200,  // ms
+  obstacles: [],        // [{lane, z, el(AR) | x(site)}]
+  animFrame: null,
+  lastTime: 0,
+  spawnTimer: 0,
+  // AR GPS calibration
+  gpsCenter: null,
+  gpsLeft: null,
+  laneWidth: null,      // meters between lanes
+  // AR positions (3D)
+  arPlayerX: 0,
+  arLanePositions: [-1, 0, 1], // will be updated after calibration
+};
+
+const LANE_X_SITE = [-180, 0, 180];  // px offset from canvas center
+const LANE_X_AR   = [-1.2, 0, 1.2]; // world-space X (updated on calibration)
+
+// ═══════════════════════════════════════════
+//  MENU / MODE SELECTION
+// ═══════════════════════════════════════════
+function startSiteMode() {
+  STATE.mode = 'site';
+  document.getElementById('menu-screen').style.display = 'none';
+  document.getElementById('game-canvas').style.display = 'block';
+  document.getElementById('game-ui').style.display = 'block';
+  document.getElementById('arrow-buttons').style.display = 'flex';
+  document.getElementById('mode-badge').className = 'mode-badge site';
+  document.getElementById('mode-badge').textContent = 'MENU';
+  resetGame();
+  initSiteGame();
+}
+
+function startARMode() {
+  STATE.mode = 'ar';
+  document.getElementById('menu-screen').style.display = 'none';
+  document.getElementById('ar-setup-panel').style.display = 'flex';
+  initGPS();
+}
+
+function goToMenu() {
+  stopGame();
+  document.getElementById('menu-screen').style.display = 'flex';
+  document.getElementById('game-canvas').style.display = 'none';
+  document.getElementById('ar-scene').style.display = 'none';
+  document.getElementById('game-ui').style.display = 'none';
+  document.getElementById('gameover-screen').style.display = 'none';
+  document.getElementById('ar-setup-panel').style.display = 'none';
+}
+
+// ═══════════════════════════════════════════
+//  SITE MODE — Canvas 2D renderer
+// ═══════════════════════════════════════════
+let ctx;
+
+function initSiteGame() {
+  const canvas = document.getElementById('game-canvas');
+  ctx = canvas.getContext('2d');
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+  window.addEventListener('keydown', onKeyDown);
+  resetGame();
+  runSiteGame();
+}
+
+function resizeCanvas() {
+  const canvas = document.getElementById('game-canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+
+function runSiteGame() {
+  STATE.running = true;
+  STATE.lastTime = performance.now();
+  STATE.animFrame = requestAnimationFrame(siteLoop);
+}
+
+function siteLoop(now) {
+  if (!STATE.running) return;
+  const dt = (now - STATE.lastTime) / 1000;
+  STATE.lastTime = now;
+
+  updateGame(dt);
+  drawSite();
+
+  STATE.animFrame = requestAnimationFrame(siteLoop);
+}
+
+function drawSite() {
+  const W = window.innerWidth, H = window.innerHeight;
+  ctx.clearRect(0, 0, W, H);
+
+  const cx = W / 2;
+  const playerY = H * 0.72;
+  const laneW = W * 0.22;
+
+  // Background — dark road
+  ctx.fillStyle = '#0a0e1a';
+  ctx.fillRect(0, 0, W, H);
+
+  // Perspective grid
+  const vp = { x: cx, y: H * 0.25 };
+  drawPerspectiveRoad(vp, W, H, laneW);
+
+  // Obstacles
+  for (const obs of STATE.obstacles) {
+    const ox = cx + LANE_X_SITE[obs.lane] * (W / 1080);
+    const t  = obs.z;   // 0 (far) → 1 (close)
+    const oy = H * 0.25 + t * (playerY - H * 0.25);
+    const scale = 0.15 + t * 0.85;
+    const obsW = laneW * 0.6 * scale;
+    const obsH = obsW * 1.4;
+
+    // Glow
+    ctx.shadowBlur  = 30 * scale;
+    ctx.shadowColor = '#ff006e';
+    ctx.fillStyle   = `rgba(255,0,110,${0.7 + 0.3 * t})`;
+    ctx.fillRect(ox - obsW / 2, oy - obsH, obsW, obsH);
+    ctx.shadowBlur  = 0;
+
+    // Edge highlight
+    ctx.strokeStyle = '#ff66aa';
+    ctx.lineWidth   = 2 * scale;
+    ctx.strokeRect(ox - obsW / 2, oy - obsH, obsW, obsH);
+  }
+
+  // Player
+  const px = cx + LANE_X_SITE[STATE.lane] * (W / 1080);
+  const pSize = laneW * 0.55;
+
+  ctx.shadowBlur  = 40;
+  ctx.shadowColor = '#00f5ff';
+
+  // Body
+  ctx.fillStyle = '#00f5ff';
+  roundRect(ctx, px - pSize * 0.22, playerY - pSize * 0.7, pSize * 0.44, pSize * 0.6, 8);
+  ctx.fill();
+
+  // Head
+  ctx.beginPath();
+  ctx.arc(px, playerY - pSize * 0.7 - pSize * 0.18, pSize * 0.18, 0, Math.PI * 2);
+  ctx.fillStyle = '#00c8d4';
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  // Ground glow under player
+  const grad = ctx.createRadialGradient(px, playerY, 0, px, playerY, pSize * 0.5);
+  grad.addColorStop(0, 'rgba(0,245,255,0.25)');
+  grad.addColorStop(1, 'rgba(0,245,255,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.ellipse(px, playerY + 4, pSize * 0.5, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawPerspectiveRoad(vp, W, H, laneW) {
+  const bottom = H;
+  const roadHalfW = W * 0.5;
+
+  // Road surface
+  const roadGrad = ctx.createLinearGradient(0, vp.y, 0, bottom);
+  roadGrad.addColorStop(0, '#0d1220');
+  roadGrad.addColorStop(1, '#070b14');
+  ctx.fillStyle = roadGrad;
+  ctx.beginPath();
+  ctx.moveTo(vp.x - 30, vp.y);
+  ctx.lineTo(vp.x + 30, vp.y);
+  ctx.lineTo(vp.x + roadHalfW, bottom);
+  ctx.lineTo(vp.x - roadHalfW, bottom);
+  ctx.closePath();
+  ctx.fill();
+
+  // Lane dividers
+  const cx = W / 2;
+  const divisions = [-1, 0, 1].map(i => i * (W / 1080) * (laneW * 1.1));
+  for (const div of divisions) {
+    if (div === 0) continue;
+    const bx = cx + div * 0.9;
+    ctx.beginPath();
+    ctx.moveTo(vp.x + div * 0.05, vp.y);
+    ctx.lineTo(bx, bottom);
+    ctx.strokeStyle = 'rgba(0,245,255,0.18)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([20, 30]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Horizon glow
+  const hGrad = ctx.createLinearGradient(0, vp.y - 40, 0, vp.y + 60);
+  hGrad.addColorStop(0, 'rgba(0,245,255,0)');
+  hGrad.addColorStop(0.5, 'rgba(0,245,255,0.07)');
+  hGrad.addColorStop(1, 'rgba(0,245,255,0)');
+  ctx.fillStyle = hGrad;
+  ctx.fillRect(0, vp.y - 40, W, 100);
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+// ═══════════════════════════════════════════
+//  AR MODE — A-Frame 3D
+// ═══════════════════════════════════════════
+function startARGame() {
+  document.getElementById('ar-setup-panel').style.display = 'none';
+  document.getElementById('ar-scene').style.display = 'block';
+  document.getElementById('game-ui').style.display = 'block';
+  document.getElementById('gps-status').style.display = 'block';
+  document.getElementById('mode-badge').className = 'mode-badge ar';
+
+  // Build lane lines in A-Frame
+  buildARLanes();
+
+  STATE.mode = 'ar';
+  resetGame();
+  runARGame();
+  startARGPSTracking();
+}
+
+function buildARLanes() {
+  const linesEl = document.getElementById('lane-lines');
+  linesEl.innerHTML = '';
+  LANE_X_AR.forEach((x, i) => {
+    const line = document.createElement('a-box');
+    line.setAttribute('position', `${x} 0.02 -15`);
+    line.setAttribute('width', '0.04');
+    line.setAttribute('height', '0.02');
+    line.setAttribute('depth', '30');
+    line.setAttribute('material', 'color: #00f5ff; opacity: 0.25; emissive: #00f5ff; emissiveIntensity: 0.5');
+    linesEl.appendChild(line);
+  });
+}
+
+function runARGame() {
+  STATE.running = true;
+  STATE.lastTime = performance.now();
+  STATE.animFrame = requestAnimationFrame(arLoop);
+}
+
+function arLoop(now) {
+  if (!STATE.running) return;
+  const dt = (now - STATE.lastTime) / 1000;
+  STATE.lastTime = now;
+  updateGame(dt);
+  updateARScene();
+  STATE.animFrame = requestAnimationFrame(arLoop);
+}
+
+function updateARScene() {
+  // Move player entity to target lane
+  const player = document.getElementById('ar-player');
+  const targetX = LANE_X_AR[STATE.lane];
+  const currPos = player.getAttribute('position');
+  const newX = currPos.x + (targetX - currPos.x) * 0.2;
+  player.setAttribute('position', `${newX} 0.5 -2`);
+
+  // Update player light
+  const light = document.getElementById('player-light');
+  light.setAttribute('position', `${newX} 1 -2`);
+
+  // Update obstacles
+  const obsContainer = document.getElementById('ar-obstacles');
+  const toRemove = [];
+
+  // Sync existing obstacle entities
+  for (let i = 0; i < STATE.obstacles.length; i++) {
+    const obs = STATE.obstacles[i];
+    if (!obs.el) {
+      // Create element
+      const el = document.createElement('a-box');
+      el.setAttribute('width', '0.55');
+      el.setAttribute('height', '1');
+      el.setAttribute('depth', '0.5');
+      el.setAttribute('material', 'color: #ff006e; emissive: #ff006e; emissiveIntensity: 0.6');
+      el.setAttribute('position', `${LANE_X_AR[obs.lane]} 0.5 ${-obs.z}`);
+      obsContainer.appendChild(el);
+      obs.el = el;
+    } else {
+      obs.el.setAttribute('position', `${LANE_X_AR[obs.lane]} 0.5 ${-obs.z}`);
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+//  CORE GAME LOGIC (shared)
+// ═══════════════════════════════════════════
+function resetGame() {
+  STATE.lane = 1;
+  STATE.score = 0;
+  STATE.lives = 3;
+  STATE.speed = 4;
+  STATE.spawnTimer = 0;
+  STATE.spawnInterval = 2200;
+  STATE.obstacles = [];
+
+  // Clear AR obstacles
+  const obsContainer = document.getElementById('ar-obstacles');
+  if (obsContainer) obsContainer.innerHTML = '';
+
+  updateHUD();
+  updateLaneDots();
+  updateArrowButtons();
+}
+
+function updateGame(dt) {
+  if (!STATE.running) return;
+
+  // Move obstacles
+  const traveled = STATE.speed * dt;
+
+  for (let i = STATE.obstacles.length - 1; i >= 0; i--) {
+    const obs = STATE.obstacles[i];
+
+    if (STATE.mode === 'site') {
+      obs.z += dt * STATE.speed / 16; // normalize to 0-1 range
+      if (obs.z > 1.05) {
+        STATE.obstacles.splice(i, 1);
+        continue;
+      }
+    } else {
+      obs.z += traveled; // world Z
+      if (obs.z > 20) {
+        if (obs.el) obs.el.remove();
+        STATE.obstacles.splice(i, 1);
+        continue;
+      }
+    }
+
+    // Collision detection
+    const hitZ = STATE.mode === 'site' ? 0.95 : 15;
+    const margin = STATE.mode === 'site' ? 0.08 : 2.5;
+    if (obs.lane === STATE.lane &&
+        ((STATE.mode === 'site' && obs.z > hitZ - margin && obs.z < hitZ + margin) ||
+         (STATE.mode === 'ar'  && obs.z > hitZ - margin && obs.z < hitZ + margin))) {
+      hitObstacle(obs, i);
+    }
+  }
+
+  // Spawn
+  STATE.spawnTimer += dt * 1000;
+  if (STATE.spawnTimer >= STATE.spawnInterval) {
+    STATE.spawnTimer = 0;
+    spawnObstacle();
+  }
+
+  // Score + difficulty
+  STATE.score += Math.floor(dt * STATE.speed * 10);
+  STATE.speed = 4 + Math.floor(STATE.score / 500) * 0.5;
+  STATE.spawnInterval = Math.max(900, 2200 - Math.floor(STATE.score / 300) * 80);
+
+  updateHUD();
+}
+
+function spawnObstacle() {
+  // Random lane, avoid spawning only in player lane consecutively
+  const lane = Math.floor(Math.random() * 3);
+  const obs = {
+    lane,
+    z: STATE.mode === 'site' ? 0 : 35,
+    el: null,
+  };
+  STATE.obstacles.push(obs);
+}
+
+function hitObstacle(obs, idx) {
+  STATE.lives--;
+  // Remove hit obstacle
+  if (obs.el) obs.el.remove();
+  STATE.obstacles.splice(idx, 1);
+
+  // Flash
+  const flash = document.getElementById('collision-flash');
+  flash.style.opacity = 1;
+  setTimeout(() => flash.style.opacity = 0, 200);
+
+  // Update hearts
+  const hEl = document.getElementById(`h${STATE.lives + 1}`);
+  if (hEl) hEl.classList.add('lost');
+
+  updateHUD();
+
+  if (STATE.lives <= 0) gameOver();
+}
+
+function gameOver() {
+  STATE.running = false;
+  cancelAnimationFrame(STATE.animFrame);
+  document.getElementById('final-score').textContent = STATE.score;
+  document.getElementById('gameover-screen').style.display = 'flex';
+}
+
+function restartGame() {
+  document.getElementById('gameover-screen').style.display = 'none';
+
+  // Reset hearts display
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById(`h${i}`).classList.remove('lost');
+  }
+
+  resetGame();
+
+  if (STATE.mode === 'site') {
+    runSiteGame();
+  } else {
+    const obsContainer = document.getElementById('ar-obstacles');
+    if (obsContainer) obsContainer.innerHTML = '';
+    runARGame();
+  }
+}
+
+// ═══════════════════════════════════════════
+//  PLAYER MOVEMENT
+// ═══════════════════════════════════════════
+function movePlayer(dir) {
+  // dir: -1 = left, +1 = right
+  const newLane = STATE.lane + dir;
+  if (newLane < 0 || newLane > 2) return;
+  STATE.lane = newLane;
+  updateLaneDots();
+  updateArrowButtons();
+}
+
+function onKeyDown(e) {
+  if (!STATE.running || STATE.mode !== 'site') return;
+  if (e.key === 'ArrowLeft')  movePlayer(-1);
+  if (e.key === 'ArrowRight') movePlayer(1);
+}
+
+function updateArrowButtons() {
+  if (STATE.mode !== 'site') return;
+  const btnL = document.getElementById('btn-left');
+  const btnR = document.getElementById('btn-right');
+  btnL.classList.toggle('hidden', STATE.lane === 0);
+  btnR.classList.toggle('hidden', STATE.lane === 2);
+}
+
+function updateLaneDots() {
+  for (let i = 0; i < 3; i++) {
+    document.getElementById(`dot-${i}`).classList.toggle('active', i === STATE.lane);
+  }
+}
+
+function updateHUD() {
+  document.getElementById('score-display').textContent = STATE.score.toLocaleString('pt-BR');
+}
+
+// ═══════════════════════════════════════════
+//  GPS / AR CALIBRATION
+// ═══════════════════════════════════════════
+let watchId = null;
+let currentPos = null;
+
+function initGPS() {
+  if (!navigator.geolocation) {
+    alert('Geolocalização não suportada neste dispositivo.');
+    goToMenu();
+    return;
+  }
+
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+      updateGPSDisplays();
+    },
+    err => {
+      console.warn('GPS error:', err);
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+  );
+}
+
+function updateGPSDisplays() {
+  if (!currentPos) return;
+
+  const fmt = c => c.toFixed(7);
+  const accStr = `± ${currentPos.acc.toFixed(1)}m`;
+
+  // Step 1: show coords and enable button
+  const dispC = document.getElementById('coord-center');
+  if (dispC && !STATE.gpsCenter) {
+    dispC.textContent = `Lat: ${fmt(currentPos.lat)}  Lng: ${fmt(currentPos.lng)}  ${accStr}`;
+    document.getElementById('btn-set-center').disabled = false;
+  }
+
+  // Step 2: show movement and enable when min distance reached
+  if (STATE.gpsCenter && !STATE.gpsLeft) {
+    const dist = geoDistance(STATE.gpsCenter, currentPos) * 1000; // meters
+    const dispL = document.getElementById('coord-left');
+    const dispD = document.getElementById('dist-left');
+    if (dispL) dispL.textContent = `Lat: ${fmt(currentPos.lat)}  Lng: ${fmt(currentPos.lng)}  ${accStr}`;
+    if (dispD) {
+      dispD.textContent = dist >= 0.5 ? `✅ Distância: ${(dist * 100).toFixed(1)} cm` : `📏 Distância: ${(dist * 100).toFixed(1)} cm  (mínimo 50 cm)`;
+    }
+    const minDist = 0.5; // 50 cm
+    document.getElementById('btn-set-left').disabled = dist < minDist;
+  }
+}
+
+function setCenter() {
+  if (!currentPos) return;
+  STATE.gpsCenter = { lat: currentPos.lat, lng: currentPos.lng };
+
+  // Update UI progress
+  document.getElementById('prog-0').classList.remove('current');
+  document.getElementById('prog-0').classList.add('done');
+  document.getElementById('prog-1').classList.add('current');
+
+  document.getElementById('step-center-box').style.display = 'none';
+  document.getElementById('step-left-box').style.display = 'block';
+}
+
+function setLeft() {
+  if (!currentPos) return;
+  STATE.gpsLeft = { lat: currentPos.lat, lng: currentPos.lng };
+
+  const dist = geoDistance(STATE.gpsCenter, STATE.gpsLeft); // km
+  STATE.laneWidth = dist * 1000; // meters
+
+  // Calculate right lane (mirror of left from center)
+  const dLat = STATE.gpsCenter.lat - STATE.gpsLeft.lat;
+  const dLng = STATE.gpsCenter.lng - STATE.gpsLeft.lng;
+  STATE.gpsRight = {
+    lat: STATE.gpsCenter.lat + dLat,
+    lng: STATE.gpsCenter.lng + dLng,
+  };
+
+  // Update AR lane X positions (scale to scene)
+  const scale = 1.2; // visual scale factor
+  LANE_X_AR[0] = -scale;
+  LANE_X_AR[1] = 0;
+  LANE_X_AR[2] = scale;
+
+  // Update progress
+  document.getElementById('prog-1').classList.remove('current');
+  document.getElementById('prog-1').classList.add('done');
+  document.getElementById('prog-2').classList.add('done');
+
+  document.getElementById('step-left-box').style.display = 'none';
+  document.getElementById('step-done-box').style.display = 'block';
+
+  const summary = document.getElementById('setup-summary');
+  summary.innerHTML =
+    `Espaçamento: <span style="color:#ffd60a">${(STATE.laneWidth * 100).toFixed(1)} cm</span><br>` +
+    `Centro → Esq: ${(STATE.laneWidth * 100).toFixed(1)} cm<br>` +
+    `Centro → Dir: ${(STATE.laneWidth * 100).toFixed(1)} cm`;
+}
+
+// ═══════════════════════════════════════════
+//  AR GPS TRACKING during gameplay
+// ═══════════════════════════════════════════
+function startARGPSTracking() {
+  if (watchId !== null) return; // already watching
+  watchId = navigator.geolocation.watchPosition(
+    pos => {
+      currentPos = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy };
+      if (STATE.running && STATE.mode === 'ar') {
+        updateARLaneFromGPS();
+      }
+      const gpsEl = document.getElementById('gps-status');
+      if (gpsEl) gpsEl.textContent = `📡 GPS: ±${pos.coords.accuracy.toFixed(1)}m`;
+    },
+    err => console.warn('GPS:', err),
+    { enableHighAccuracy: true, maximumAge: 0 }
+  );
+}
+
+function updateARLaneFromGPS() {
+  if (!currentPos || !STATE.gpsCenter || !STATE.gpsLeft) return;
+
+  // Project player position onto lane axis
+  const dLat = currentPos.lat - STATE.gpsCenter.lat;
+  const dLng = currentPos.lng - STATE.gpsCenter.lng;
+
+  // Lane axis direction (center → left)
+  const axLat = STATE.gpsLeft.lat - STATE.gpsCenter.lat;
+  const axLng = STATE.gpsLeft.lng - STATE.gpsCenter.lng;
+  const axLen = Math.sqrt(axLat * axLat + axLng * axLng);
+
+  // Projection onto lane axis
+  const proj = (dLat * axLat + dLng * axLng) / (axLen * axLen);
+
+  // proj ~ -1 → right lane, 0 → center, 1 → left lane
+  let newLane;
+  if (proj > 0.5) newLane = 0;       // left
+  else if (proj < -0.5) newLane = 2; // right
+  else newLane = 1;                  // center
+
+  if (newLane !== STATE.lane) {
+    STATE.lane = newLane;
+    updateLaneDots();
+  }
+}
+
+// ═══════════════════════════════════════════
+//  UTILITIES
+// ═══════════════════════════════════════════
+function geoDistance(a, b) {
+  // Haversine formula, returns km
+  const R = 6371;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const h = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) *
+            Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function toRad(d) { return d * Math.PI / 180; }
+
+function stopGame() {
+  STATE.running = false;
+  if (STATE.animFrame) cancelAnimationFrame(STATE.animFrame);
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+  window.removeEventListener('keydown', onKeyDown);
+  window.removeEventListener('resize', resizeCanvas);
+}
+
+// ═══════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════
+// Prevent context menu on long press (mobile)
+document.addEventListener('contextmenu', e => e.preventDefault());
+</script>
+</body>
+</html>
