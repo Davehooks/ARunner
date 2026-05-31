@@ -817,95 +817,38 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 // ═══════════════════════════════════════════
-//  AR MODE — A-Frame 3D
+//  AR MODE — mesmo canvas 2D do site, GPS controla a faixa
 // ═══════════════════════════════════════════
 function startARGame() {
   document.getElementById('ar-setup-panel').style.display = 'none';
-  document.getElementById('ar-scene').style.display = 'block';
+
+  // AR usa o mesmo canvas do site — sem A-Frame 3D
+  document.getElementById('game-canvas').style.display = 'block';
   document.getElementById('game-ui').style.display = 'block';
+
+  // Botões de seta ficam ocultos no AR (controle é pelo GPS)
+  document.getElementById('arrow-buttons').style.display = 'none';
 
   const gpsEl = document.getElementById('gps-status');
   gpsEl.style.display = 'block';
-  // If GPS is already locked from calibration, show current accuracy immediately
-  if (currentPos) {
-    gpsEl.textContent = `📡 GPS: ±${currentPos.acc.toFixed(1)}m`;
-  } else {
-    gpsEl.textContent = '📡 GPS: buscando sinal...';
-  }
+  gpsEl.textContent = currentPos
+    ? `📡 GPS: ±${currentPos.acc.toFixed(1)}m`
+    : '📡 GPS: buscando sinal...';
 
   document.getElementById('mode-badge').className = 'mode-badge ar';
 
-  // Build lane lines in A-Frame
-  buildARLanes();
+  // Garante que o canvas tem contexto inicializado
+  if (!ctx) {
+    const canvas = document.getElementById('game-canvas');
+    ctx = canvas.getContext('2d');
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+  }
 
   STATE.mode = 'ar';
   resetGame();
-  runARGame();
-  // GPS already running via initGPS() — onGPSUpdate handles gameplay tracking
-}
-
-function buildARLanes() {
-  const linesEl = document.getElementById('lane-lines');
-  linesEl.innerHTML = '';
-  LANE_X_AR.forEach((x, i) => {
-    const line = document.createElement('a-box');
-    line.setAttribute('position', `${x} 0.02 -15`);
-    line.setAttribute('width', '0.04');
-    line.setAttribute('height', '0.02');
-    line.setAttribute('depth', '30');
-    line.setAttribute('material', 'color: #00f5ff; opacity: 0.25; emissive: #00f5ff; emissiveIntensity: 0.5');
-    linesEl.appendChild(line);
-  });
-}
-
-function runARGame() {
-  STATE.running = true;
-  STATE.lastTime = performance.now();
-  STATE.animFrame = requestAnimationFrame(arLoop);
-}
-
-function arLoop(now) {
-  if (!STATE.running) return;
-  const dt = (now - STATE.lastTime) / 1000;
-  STATE.lastTime = now;
-  updateGame(dt);
-  updateARScene();
-  STATE.animFrame = requestAnimationFrame(arLoop);
-}
-
-function updateARScene() {
-  // Move player entity to target lane
-  const player = document.getElementById('ar-player');
-  const targetX = LANE_X_AR[STATE.lane];
-  const currPos = player.getAttribute('position');
-  const newX = currPos.x + (targetX - currPos.x) * 0.2;
-  player.setAttribute('position', `${newX} 0.5 -2`);
-
-  // Update player light
-  const light = document.getElementById('player-light');
-  light.setAttribute('position', `${newX} 1 -2`);
-
-  // Update obstacles
-  const obsContainer = document.getElementById('ar-obstacles');
-  const toRemove = [];
-
-  // Sync existing obstacle entities
-  for (let i = 0; i < STATE.obstacles.length; i++) {
-    const obs = STATE.obstacles[i];
-    if (!obs.el) {
-      // Create element
-      const el = document.createElement('a-box');
-      el.setAttribute('width', '0.55');
-      el.setAttribute('height', '1');
-      el.setAttribute('depth', '0.5');
-      el.setAttribute('material', 'color: #ff006e; emissive: #ff006e; emissiveIntensity: 0.6');
-      el.setAttribute('position', `${LANE_X_AR[obs.lane]} 0.5 ${-obs.z}`);
-      obsContainer.appendChild(el);
-      obs.el = el;
-    } else {
-      obs.el.setAttribute('position', `${LANE_X_AR[obs.lane]} 0.5 ${-obs.z}`);
-    }
-  }
+  // Roda exatamente o mesmo loop do site — GPS atualiza STATE.lane via onGPSUpdate
+  runSiteGame();
 }
 
 // ═══════════════════════════════════════════
@@ -932,33 +875,18 @@ function resetGame() {
 function updateGame(dt) {
   if (!STATE.running) return;
 
-  // Move obstacles
-  const traveled = STATE.speed * dt;
-
   for (let i = STATE.obstacles.length - 1; i >= 0; i--) {
     const obs = STATE.obstacles[i];
 
-    if (STATE.mode === 'site') {
-      obs.z += dt * STATE.speed / 16; // normalize to 0-1 range
-      if (obs.z > 1.05) {
-        STATE.obstacles.splice(i, 1);
-        continue;
-      }
-    } else {
-      obs.z += traveled; // world Z
-      if (obs.z > 20) {
-        if (obs.el) obs.el.remove();
-        STATE.obstacles.splice(i, 1);
-        continue;
-      }
+    // Both site and AR use the same 0-1 normalized z on the canvas
+    obs.z += dt * STATE.speed / 16;
+    if (obs.z > 1.05) {
+      STATE.obstacles.splice(i, 1);
+      continue;
     }
 
-    // Collision detection
-    const hitZ = STATE.mode === 'site' ? 0.95 : 15;
-    const margin = STATE.mode === 'site' ? 0.08 : 2.5;
-    if (obs.lane === STATE.lane &&
-        ((STATE.mode === 'site' && obs.z > hitZ - margin && obs.z < hitZ + margin) ||
-         (STATE.mode === 'ar'  && obs.z > hitZ - margin && obs.z < hitZ + margin))) {
+    // Collision: player hits when obstacle reaches ~95% of the road (player position)
+    if (obs.lane === STATE.lane && obs.z > 0.87 && obs.z < 1.03) {
       hitObstacle(obs, i);
     }
   }
@@ -979,14 +907,8 @@ function updateGame(dt) {
 }
 
 function spawnObstacle() {
-  // Random lane, avoid spawning only in player lane consecutively
   const lane = Math.floor(Math.random() * 3);
-  const obs = {
-    lane,
-    z: STATE.mode === 'site' ? 0 : 35,
-    el: null,
-  };
-  STATE.obstacles.push(obs);
+  STATE.obstacles.push({ lane, z: 0 });
 }
 
 function hitObstacle(obs, idx) {
@@ -1019,20 +941,13 @@ function gameOver() {
 function restartGame() {
   document.getElementById('gameover-screen').style.display = 'none';
 
-  // Reset hearts display
   for (let i = 1; i <= 3; i++) {
     document.getElementById(`h${i}`).classList.remove('lost');
   }
 
   resetGame();
-
-  if (STATE.mode === 'site') {
-    runSiteGame();
-  } else {
-    const obsContainer = document.getElementById('ar-obstacles');
-    if (obsContainer) obsContainer.innerHTML = '';
-    runARGame();
-  }
+  // Both modes use the canvas loop; AR just has no arrow buttons
+  runSiteGame();
 }
 
 // ═══════════════════════════════════════════
